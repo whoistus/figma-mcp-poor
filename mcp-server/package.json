@@ -1,0 +1,22 @@
+{
+  "name": "figma-mcp-server",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": {
+    "figma-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "ws": "^8.18.0",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.8.3",
+    "tsx": "^4.19.4"
+  }
+}

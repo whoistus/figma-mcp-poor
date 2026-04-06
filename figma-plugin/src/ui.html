@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 12px;
+    padding: 16px;
+    background: #1e1e1e;
+    color: #ccc;
+  }
+  .status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #f44;
+    transition: background 0.3s;
+  }
+  .dot.connected { background: #4f4; }
+  .dot.connecting { background: #fa0; }
+  h3 { font-size: 13px; font-weight: 600; color: #fff; margin-bottom: 4px; }
+  .info { color: #888; font-size: 11px; margin-top: 8px; }
+  .stats { margin-top: 12px; color: #888; font-size: 11px; }
+  .stats span { color: #ccc; }
+  button {
+    margin-top: 12px;
+    padding: 6px 12px;
+    background: #333;
+    color: #ccc;
+    border: 1px solid #555;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+  }
+  button:hover { background: #444; }
+</style>
+</head>
+<body>
+  <div class="status">
+    <div class="dot" id="dot"></div>
+    <h3 id="statusText">Disconnected</h3>
+  </div>
+  <div class="info" id="info">Connecting to MCP server...</div>
+  <div class="stats">
+    Requests handled: <span id="requestCount">0</span>
+  </div>
+  <button id="reconnectBtn" style="display:none">Reconnect</button>
+
+<script>
+const WS_URL = 'ws://localhost:3055';
+let ws = null;
+let requestCount = 0;
+let reconnectTimer = null;
+let reconnectDelay = 1000;
+const MAX_RECONNECT_DELAY = 30000;
+
+const dot = document.getElementById('dot');
+const statusText = document.getElementById('statusText');
+const info = document.getElementById('info');
+const requestCountEl = document.getElementById('requestCount');
+const reconnectBtn = document.getElementById('reconnectBtn');
+
+function setStatus(status, message) {
+  dot.className = 'dot ' + status;
+  statusText.textContent = status === 'connected' ? 'Connected' :
+                            status === 'connecting' ? 'Connecting...' : 'Disconnected';
+  if (message) info.textContent = message;
+  reconnectBtn.style.display = status === '' ? 'block' : 'none';
+}
+
+function connect() {
+  if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
+    return;
+  }
+
+  setStatus('connecting', 'Connecting to MCP server...');
+
+  try {
+    ws = new WebSocket(WS_URL);
+  } catch (e) {
+    setStatus('', 'Failed to create WebSocket: ' + e.message);
+    scheduleReconnect();
+    return;
+  }
+
+  ws.onopen = () => {
+    reconnectDelay = 1000;
+    setStatus('connected', 'Connected to MCP server on port 3055');
+    parent.postMessage({
+      pluginMessage: { type: 'connection-status', connected: true }
+    }, '*');
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const request = JSON.parse(event.data);
+      // Forward request to plugin main thread
+      parent.postMessage({
+        pluginMessage: { type: 'ws-request', payload: request }
+      }, '*');
+    } catch (e) {
+      console.error('Failed to parse WS message:', e);
+    }
+  };
+
+  ws.onclose = () => {
+    setStatus('', 'Disconnected from MCP server');
+    parent.postMessage({
+      pluginMessage: { type: 'connection-status', connected: false }
+    }, '*');
+    ws = null;
+    scheduleReconnect();
+  };
+
+  ws.onerror = () => {
+    // onclose will fire after this
+  };
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(() => {
+    connect();
+    reconnectDelay = Math.min(reconnectDelay * 1.5, MAX_RECONNECT_DELAY);
+  }, reconnectDelay);
+  info.textContent = `Reconnecting in ${Math.round(reconnectDelay / 1000)}s...`;
+}
+
+reconnectBtn.addEventListener('click', () => {
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectDelay = 1000;
+  connect();
+});
+
+// Receive responses from plugin main thread
+window.onmessage = (event) => {
+  const msg = event.data.pluginMessage;
+  if (!msg) return;
+
+  if (msg.type === 'ws-response') {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      console.error('Cannot send response: WebSocket not connected');
+      return;
+    }
+
+    ws.send(JSON.stringify(msg.payload));
+    requestCount++;
+    requestCountEl.textContent = requestCount;
+  }
+};
+
+// Start connection
+connect();
+</script>
+</body>
+</html>

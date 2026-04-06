@@ -1,0 +1,15 @@
+{
+  "name": "figma-mcp-poor",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "mcp-server",
+    "figma-plugin"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "build:server": "npm run build -w mcp-server",
+    "build:plugin": "npm run build -w figma-plugin",
+    "dev:server": "npm run dev -w mcp-server"
+  }
+}
