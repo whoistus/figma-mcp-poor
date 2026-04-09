@@ -1,0 +1,185 @@
+# figma-mcp-poor
+
+[![npm version](https://img.shields.io/npm/v/figma-mcp-poor.svg)](https://www.npmjs.com/package/figma-mcp-poor)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+A Figma MCP (Model Context Protocol) bridge that lets AI assistants read design context from Figma. Uses the **Figma Plugin API** (local, no network) instead of the REST API — no API keys, no rate limits, no blown context windows.
+
+```
+AI IDE  ←—MCP stdio—→  MCP Server (Node.js)  ←—WebSocket—→  Figma Plugin (figma.* API)
+```
+
+## Quick Start
+
+### 1. Set up your MCP client
+
+Add the server to your MCP client config (see [Client Configuration](#mcp-client-configuration) below).
+
+### 2. Install the Figma plugin
+
+```bash
+git clone https://github.com/iamtu/figma-mcp-poor.git
+cd figma-mcp-poor
+npm install
+npm run build:plugin
+```
+
+Then in Figma:
+1. Open a design file
+2. Go to **Plugins → Development → Import plugin from manifest...**
+3. Select `figma-mcp-poor/figma-plugin/manifest.json`
+4. Run the plugin — it will connect to the MCP server via WebSocket on `localhost:3055`
+
+### 3. Start designing with AI
+
+Select elements in Figma and use your AI assistant to inspect them. The recommended first call is `get_dev_summary` — it returns structure, text content, colors, components, and a screenshot in one request.
+
+## MCP Client Configuration
+
+### Claude Code
+
+In your project's `.mcp.json` or global `~/.claude.json`:
+
+```json
+{
+  "mcpServers": {
+    "figma": {
+      "command": "npx",
+      "args": ["-y", "figma-mcp-poor"]
+    }
+  }
+}
+```
+
+### Cursor
+
+In `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "figma": {
+      "command": "npx",
+      "args": ["-y", "figma-mcp-poor"]
+    }
+  }
+}
+```
+
+### VS Code (Copilot)
+
+In `.vscode/mcp.json`:
+
+```json
+{
+  "servers": {
+    "figma": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "figma-mcp-poor"]
+    }
+  }
+}
+```
+
+### Windsurf
+
+In `~/.codeium/windsurf/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "figma": {
+      "command": "npx",
+      "args": ["-y", "figma-mcp-poor"]
+    }
+  }
+}
+```
+
+### Custom port
+
+Set the `FIGMA_MCP_PORT` environment variable to change the WebSocket port (default: `3055`):
+
+```json
+{
+  "mcpServers": {
+    "figma": {
+      "command": "npx",
+      "args": ["-y", "figma-mcp-poor"],
+      "env": {
+        "FIGMA_MCP_PORT": "4000"
+      }
+    }
+  }
+}
+```
+
+> **Note:** If you change the port, you also need to update the Figma plugin's `manifest.json` → `networkAccess.devAllowedDomains` to match.
+
+## Available Tools
+
+| Tool | Description | Token Cost |
+|------|-------------|------------|
+| `get_dev_summary` | **Start here.** Complete summary: structure, texts, colors, components, screenshot | Medium |
+| `get_document_info` | File name, pages, current page | Low |
+| `get_selection` | Selected nodes with CSS properties, optional text flattening and screenshot | Low–Medium |
+| `get_node_by_id` | Inspect a specific node by ID with CSS properties | Low–Medium |
+| `get_styles` | Local paint/text/effect/grid styles as CSS values | Low |
+| `get_variables` | Design tokens/variables (colors, numbers, strings, booleans) | Low |
+| `get_components` | Local components with property definitions | Low–Medium |
+| `get_design_context` | Design brief (markdown) or detailed context (JSON) for a node | Medium |
+| `get_screenshot` | Export a node as PNG, JPG, or SVG | Medium |
+
+## How It Works
+
+1. The **MCP server** starts a WebSocket server on `localhost:3055`
+2. The **Figma plugin** connects to this WebSocket from inside Figma
+3. When an AI tool is called, the server sends a request through WebSocket to the plugin
+4. The plugin reads data using the Figma Plugin API (`figma.*`) and sends it back
+5. The server formats raw Figma data into developer-friendly CSS-like output and returns it to the AI
+
+Key design decisions:
+- **Default depth=1** for node traversal prevents context explosion. Use `get_node_by_id` to drill deeper.
+- **Formatting is server-side** — the plugin sends raw data, the server transforms it. Formatting changes don't require reloading the plugin.
+- **Smart truncation** — responses exceeding the token budget are truncated with hints guiding the AI to drill deeper.
+
+## Development
+
+```bash
+# Install dependencies
+npm install
+
+# Build everything
+npm run build
+
+# Dev mode (MCP server with auto-reload)
+npm run dev:server
+
+# Watch mode (Figma plugin)
+npm run watch -w figma-plugin
+```
+
+## Troubleshooting
+
+**Plugin won't connect**
+- Make sure the MCP server is running before starting the plugin
+- Check that port 3055 (or your custom port) isn't in use: `lsof -i :3055`
+- The plugin only connects to `localhost` — no remote connections
+
+**"No selection" responses**
+- Select at least one element in Figma before calling selection-based tools
+- Make sure the plugin UI is open (the WebSocket client runs in the plugin UI)
+
+**WebSocket errors**
+- Only one Figma file can connect at a time (single-connection design)
+- If you switch files, restart the plugin in the new file
+
+**Large designs timing out**
+- Use `get_node_by_id` with specific node IDs instead of scanning entire pages
+- Reduce `depth` parameter (default is 1, max is 5)
+- Screenshots are capped at 800px width by default — use `max_width` to adjust
+
+## License
+
+MIT
