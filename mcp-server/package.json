@@ -1,6 +1,6 @@
 {
   "name": "figma-mcp-poor",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Figma MCP bridge — lets AI assistants read design context from Figma via Plugin API instead of REST API",
   "type": "module",
   "bin": {
@@ -23,9 +23,9 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/iamtu/figma-mcp-poor.git"
+    "url": "git+https://github.com/whoistus/figma-mcp-poor.git"
   },
-  "homepage": "https://github.com/iamtu/figma-mcp-poor#readme",
+  "homepage": "https://github.com/whoistus/figma-mcp-poor#readme",
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",

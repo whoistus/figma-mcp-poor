@@ -62,6 +62,6 @@ Defines `PluginRequest`/`PluginResponse` (WS protocol), `ToolType` union, per-to
 - **Truncation with hints** — When responses exceed token budget, children are truncated with `{ _truncated: true, remaining: N, hint: "..." }` to guide the AI to drill deeper.
 - **WebSocket port** configurable via `FIGMA_MCP_PORT` env var (default 3055). Plugin hardcoded to `ws://localhost:3055` in `manifest.json` devAllowedDomains.
 
-## MCP Tools (9 total)
+## MCP Tools (10 total)
 
-Tiered by token cost: `get_document_info` and `get_selection` are lightweight discovery tools. `get_node_by_id`, `get_styles`, `get_variables`, `get_components` are targeted inspection. `get_design_context`, `get_screenshot`, and `get_dev_summary` are rich context tools. `get_dev_summary` is the recommended first call — returns structure, texts, colors, components, and screenshot in one request.
+Tiered by token cost: `get_document_info` and `get_selection` are lightweight discovery tools. `get_node_by_id`, `get_styles`, `get_variables`, `get_components` are targeted inspection. `get_design_context`, `get_screenshot`, `get_flows`, and `get_dev_summary` are rich context tools. `get_dev_summary` is the recommended first call — returns structure, texts, colors, components, and screenshot in one request. `get_flows` returns prototype flow starting points and all interaction connections (click/hover/press → navigate/overlay/URL) with transition animations — useful for understanding navigation logic when converting designs to code.

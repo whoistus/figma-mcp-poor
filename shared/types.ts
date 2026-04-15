@@ -21,7 +21,8 @@ export type ToolType =
   | "get_variables"
   | "get_components"
   | "get_design_context"
-  | "get_screenshot";
+  | "get_screenshot"
+  | "get_flows";
 
 // ---- Property Filter Categories ----
 
@@ -70,6 +71,78 @@ export interface GetScreenshotParams {
   format?: "PNG" | "JPG" | "SVG";
 }
 
+export interface GetFlowsParams {
+  nodeId?: string;
+  depth?: number;
+}
+
+// ---- Prototype Flow Types ----
+
+export type TriggerType =
+  | "ON_CLICK"
+  | "ON_HOVER"
+  | "ON_PRESS"
+  | "ON_DRAG"
+  | "MOUSE_ENTER"
+  | "MOUSE_LEAVE"
+  | "MOUSE_UP"
+  | "MOUSE_DOWN"
+  | "AFTER_TIMEOUT";
+
+export type ActionType =
+  | "NAVIGATE"
+  | "SWAP_OVERLAY"
+  | "OPEN_URL"
+  | "BACK"
+  | "CLOSE"
+  | "SET_VARIABLE"
+  | "SCROLL_TO"
+  | "UPDATE_MEDIA_RUNTIME";
+
+export type TransitionType =
+  | "DISSOLVE"
+  | "SMART_ANIMATE"
+  | "MOVE_IN"
+  | "MOVE_OUT"
+  | "PUSH"
+  | "SLIDE_IN"
+  | "SLIDE_OUT"
+  | "INSTANT";
+
+export interface SerializedTransition {
+  type: TransitionType;
+  duration?: number;
+  easing?: string;
+  direction?: string;
+}
+
+export interface SerializedReaction {
+  trigger: TriggerType;
+  action: ActionType;
+  destinationId?: string;
+  destinationName?: string;
+  url?: string;
+  transition?: SerializedTransition;
+  timeout?: number;
+}
+
+export interface SerializedFlowStartingPoint {
+  nodeId: string;
+  name: string;
+}
+
+export interface SerializedFlowConnection {
+  sourceId: string;
+  sourceName: string;
+  reactions: SerializedReaction[];
+}
+
+export interface SerializedFlowData {
+  startingPoints: SerializedFlowStartingPoint[];
+  connections: SerializedFlowConnection[];
+  totalConnections: number;
+}
+
 // ---- Serialized Node (from plugin to server) ----
 
 export interface SerializedNode {
@@ -114,6 +187,8 @@ export interface SerializedNode {
   componentProperties?: Record<string, unknown>;
   componentPropertyDefinitions?: Record<string, unknown>;
   description?: string;
+  // Prototype interactions
+  reactions?: SerializedReaction[];
   // Children
   children?: SerializedNode[];
   childCount?: number;

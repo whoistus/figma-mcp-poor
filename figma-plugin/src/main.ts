@@ -7,6 +7,7 @@ import { handleGetComponents } from "./handlers/components";
 import { handleGetDesignContext } from "./handlers/context";
 import { handleGetScreenshot } from "./handlers/screenshot";
 import { handleGetDevSummary } from "./handlers/dev-summary";
+import { handleGetFlows } from "./handlers/flows";
 
 // Show the UI (contains WebSocket client)
 figma.showUI(__html__, { visible: true, width: 280, height: 180 });
@@ -57,6 +58,8 @@ async function handleRequest(type: string, params: Record<string, unknown>): Pro
       return handleGetScreenshot(params as { nodeId: string; scale?: number; format?: "PNG" | "JPG" | "SVG" });
     case "get_dev_summary":
       return handleGetDevSummary(params as { nodeId?: string; include_screenshot?: boolean; max_width?: number });
+    case "get_flows":
+      return handleGetFlows(params as { nodeId?: string; depth?: number });
     default:
       throw new Error(`Unknown request type: ${type}`);
   }

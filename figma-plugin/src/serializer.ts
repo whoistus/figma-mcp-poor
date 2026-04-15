@@ -12,6 +12,21 @@ interface SerializedPaint {
   visible?: boolean;
 }
 
+interface SerializedReaction {
+  trigger: string;
+  action: string;
+  destinationId?: string;
+  destinationName?: string;
+  url?: string;
+  transition?: {
+    type: string;
+    duration?: number;
+    easing?: string;
+    direction?: string;
+  };
+  timeout?: number;
+}
+
 interface SerializedNode {
   id: string;
   name: string;
@@ -50,6 +65,7 @@ interface SerializedNode {
   componentPropertyDefinitions?: Record<string, unknown>;
   overriddenTexts?: Array<{ id: string; name: string; characters: string }>;
   description?: string;
+  reactions?: SerializedReaction[];
   children?: SerializedNode[];
   childCount?: number;
   truncated?: boolean;
@@ -242,6 +258,12 @@ export async function serializeNode(
       }
       result.componentPropertyDefinitions = compact;
     }
+  }
+
+  // Prototype interactions (reactions)
+  if ("reactions" in node) {
+    const reactions = serializeReactions(node as SceneNode & { reactions: readonly Reaction[] });
+    if (reactions.length) result.reactions = reactions;
   }
 
   // Children
@@ -448,6 +470,88 @@ export function collectComponents(node: SceneNode): Array<{
 
   walk(node);
   return results;
+}
+
+// ---- Reaction serializer ----
+
+function serializeReactions(node: SceneNode & { reactions: readonly Reaction[] }): SerializedReaction[] {
+  const results: SerializedReaction[] = [];
+  for (const reaction of node.reactions) {
+    if (!reaction.trigger || !reaction.action) continue;
+
+    const serialized: SerializedReaction = {
+      trigger: reaction.trigger.type,
+      action: reaction.action.type,
+    };
+
+    // Destination node
+    if (reaction.action.type === "NAVIGATE" || reaction.action.type === "SWAP_OVERLAY") {
+      const action = reaction.action as { destinationId?: string | null; navigation?: string };
+      if (action.destinationId) {
+        serialized.destinationId = action.destinationId;
+        // Try to resolve destination name
+        try {
+          const destNode = figma.getNodeById(action.destinationId);
+          if (destNode) serialized.destinationName = destNode.name;
+        } catch { /* ignore */ }
+      }
+    }
+
+    // URL for OPEN_URL actions
+    if (reaction.action.type === "OPEN_URL") {
+      const action = reaction.action as { url?: string };
+      if (action.url) serialized.url = action.url;
+    }
+
+    // Transition animation
+    if ("transition" in reaction.action && reaction.action.transition) {
+      const t = reaction.action.transition as {
+        type: string;
+        duration?: number;
+        easing?: { type: string };
+        direction?: string;
+      };
+      serialized.transition = { type: t.type };
+      if (t.duration !== undefined) serialized.transition.duration = t.duration;
+      if (t.easing) serialized.transition.easing = t.easing.type;
+      if (t.direction) serialized.transition.direction = t.direction;
+    }
+
+    // Timeout trigger delay
+    if (reaction.trigger.type === "AFTER_TIMEOUT" && "timeout" in reaction.trigger) {
+      serialized.timeout = (reaction.trigger as { timeout: number }).timeout;
+    }
+
+    results.push(serialized);
+  }
+  return results;
+}
+
+// ---- Collect all prototype flows from a node tree ----
+
+export function collectFlows(node: SceneNode): Array<{
+  sourceId: string;
+  sourceName: string;
+  reactions: SerializedReaction[];
+}> {
+  const connections: Array<{ sourceId: string; sourceName: string; reactions: SerializedReaction[] }> = [];
+
+  function walk(n: SceneNode): void {
+    if ("reactions" in n) {
+      const reactions = serializeReactions(n as SceneNode & { reactions: readonly Reaction[] });
+      if (reactions.length) {
+        connections.push({ sourceId: n.id, sourceName: n.name, reactions });
+      }
+    }
+    if ("children" in n) {
+      for (const child of (n as FrameNode).children) {
+        walk(child);
+      }
+    }
+  }
+
+  walk(node);
+  return connections;
 }
 
 // ---- Paint serializer ----

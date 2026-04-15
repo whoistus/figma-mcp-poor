@@ -1,4 +1,7 @@
-import type { SerializedNode, SerializedPaint, SerializedStyle, SerializedVariable } from "./types.js";
+import type {
+  SerializedNode, SerializedPaint, SerializedStyle, SerializedVariable,
+  SerializedFlowData, SerializedFlowConnection, SerializedReaction,
+} from "./types.js";
 
 // ---- Color Formatting ----
 
@@ -172,6 +175,7 @@ export interface FormattedNode {
   props?: Record<string, unknown>;
   desc?: string;
   overriddenTexts?: Array<{ name: string; text: string }>;
+  interactions?: string[];
   children?: FormattedNode[];
   childCount?: number;
   truncated?: boolean;
@@ -235,6 +239,11 @@ export function formatNode(node: SerializedNode): FormattedNode {
       name: t.name,
       text: t.characters,
     }));
+  }
+
+  // Prototype interactions — compact readable format
+  if (node.reactions?.length) {
+    f.interactions = node.reactions.map(formatReaction);
   }
 
   // Children
@@ -388,6 +397,81 @@ export function formatDesignBrief(node: SerializedNode, children: SerializedNode
   // Component info
   if (node.componentName) lines.push(`- Component: ${node.componentName}`);
   if (node.description) lines.push(`- Description: ${node.description}`);
+
+  return lines.join("\n");
+}
+
+// ---- Reaction / Flow Formatting ----
+
+function formatReaction(reaction: SerializedReaction): string {
+  const trigger = reaction.trigger.replace("ON_", "").replace("AFTER_", "").toLowerCase();
+  const dest = reaction.destinationName || reaction.destinationId || "";
+  const url = reaction.url || "";
+
+  let arrow: string;
+  switch (reaction.action) {
+    case "NAVIGATE":
+      arrow = `--${trigger}--> ${dest}`;
+      break;
+    case "SWAP_OVERLAY":
+      arrow = `--${trigger}--> overlay(${dest})`;
+      break;
+    case "OPEN_URL":
+      arrow = `--${trigger}--> url(${url})`;
+      break;
+    case "BACK":
+      arrow = `--${trigger}--> [back]`;
+      break;
+    case "CLOSE":
+      arrow = `--${trigger}--> [close]`;
+      break;
+    case "SET_VARIABLE":
+      arrow = `--${trigger}--> [set_variable]`;
+      break;
+    default:
+      arrow = `--${trigger}--> [${reaction.action.toLowerCase()}]`;
+  }
+
+  // Append transition info
+  if (reaction.transition) {
+    const t = reaction.transition;
+    const anim = t.type.toLowerCase().replace("_", "-");
+    const dur = t.duration !== undefined ? `${t.duration}ms` : "";
+    const parts = [anim, dur].filter(Boolean).join(" ");
+    if (parts) arrow += ` (${parts})`;
+  }
+
+  // Timeout delay
+  if (reaction.timeout !== undefined) {
+    arrow += ` delay:${reaction.timeout}ms`;
+  }
+
+  return arrow;
+}
+
+export function formatFlows(data: SerializedFlowData): string {
+  const lines: string[] = [];
+
+  // Starting points
+  if (data.startingPoints.length) {
+    lines.push("## Flow Starting Points");
+    for (const sp of data.startingPoints) {
+      lines.push(`- [${sp.name}] → node:${sp.nodeId}`);
+    }
+    lines.push("");
+  }
+
+  // Connections
+  if (data.connections.length) {
+    lines.push(`## Prototype Connections (${data.totalConnections})`);
+    for (const conn of data.connections) {
+      for (const reaction of conn.reactions) {
+        lines.push(`- ${conn.sourceName} ${formatReaction(reaction)}`);
+      }
+    }
+  } else {
+    lines.push("No prototype connections found.");
+  }
 
   return lines.join("\n");
 }

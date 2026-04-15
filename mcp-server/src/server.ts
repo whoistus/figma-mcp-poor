@@ -2,7 +2,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { WebSocketBridge } from "./websocket.js";
 import type { SerializedNode, SerializedPaint, SerializedStyle, SerializedVariable } from "./types.js";
-import { formatNode, formatStyle, formatVariable, formatDesignBrief, formatColor, formatFills } from "./formatter.js";
+import { formatNode, formatStyle, formatVariable, formatDesignBrief, formatColor, formatFills, formatFlows } from "./formatter.js";
+import type { SerializedFlowData } from "./types.js";
 import { truncateResponse } from "./truncator.js";
 
 // Compact JSON — no pretty-printing. Saves ~40% tokens.
@@ -231,6 +232,19 @@ export function registerTools(server: McpServer, bridge: WebSocketBridge): void 
       }
 
       return { content: content as Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> };
+    }
+  );
+
+  server.tool(
+    "get_flows",
+    "Prototype flows and interactions. Shows starting points and all click/hover/press connections between frames. Useful for understanding navigation logic.",
+    {
+      nodeId: z.string().optional().describe("Scope to a subtree (default: entire current page)"),
+    },
+    async ({ nodeId }) => {
+      const data = await bridge.request("get_flows", { nodeId }) as SerializedFlowData;
+      const formatted = formatFlows(data);
+      return { content: [{ type: "text", text: formatted }] };
     }
   );
 }

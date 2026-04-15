@@ -23,7 +23,8 @@ export type ToolType =
   | "get_variables"
   | "get_components"
   | "get_design_context"
-  | "get_screenshot";
+  | "get_screenshot"
+  | "get_flows";
 
 // ---- Property Filter Categories ----
 
@@ -76,6 +77,7 @@ export interface SerializedNode {
   componentPropertyDefinitions?: Record<string, unknown>;
   overriddenTexts?: Array<{ id: string; name: string; characters: string }>;
   description?: string;
+  reactions?: SerializedReaction[];
   children?: SerializedNode[];
   childCount?: number;
   truncated?: boolean;
@@ -105,4 +107,40 @@ export interface SerializedVariable {
   resolvedType: string;
   collection: string;
   values: Record<string, unknown>;
+}
+
+// ---- Prototype Flow Types ----
+
+export interface SerializedTransition {
+  type: string;
+  duration?: number;
+  easing?: string;
+  direction?: string;
+}
+
+export interface SerializedReaction {
+  trigger: string;
+  action: string;
+  destinationId?: string;
+  destinationName?: string;
+  url?: string;
+  transition?: SerializedTransition;
+  timeout?: number;
+}
+
+export interface SerializedFlowStartingPoint {
+  nodeId: string;
+  name: string;
+}
+
+export interface SerializedFlowConnection {
+  sourceId: string;
+  sourceName: string;
+  reactions: SerializedReaction[];
+}
+
+export interface SerializedFlowData {
+  startingPoints: SerializedFlowStartingPoint[];
+  connections: SerializedFlowConnection[];
+  totalConnections: number;
 }
