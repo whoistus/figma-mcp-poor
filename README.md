@@ -17,6 +17,14 @@ Add the server to your MCP client config (see [Client Configuration](#mcp-client
 
 ### 2. Install the Figma plugin
 
+**Option A — Download pre-built (recommended):**
+
+1. Go to [Releases](https://github.com/whoistus/figma-mcp-poor/releases/latest) and download `figma-plugin-vX.Y.Z.zip`
+2. Unzip somewhere stable on your disk
+3. In Figma: open any design file → **Plugins → Development → Import plugin from manifest...** → select `manifest.json` from the unzipped folder
+
+**Option B — Build from source:**
+
 ```bash
 git clone https://github.com/whoistus/figma-mcp-poor
 cd figma-mcp-poor
@@ -24,12 +32,9 @@ npm install
 npm run build:plugin
 ```
 
-Then in Figma:
+Then in Figma: **Plugins → Development → Import plugin from manifest...** → select `figma-plugin/manifest.json`.
 
-1. Open a design file
-2. Go to **Plugins → Development → Import plugin from manifest...**
-3. Select `figma-mcp-poor/figma-plugin/manifest.json`
-4. Run the plugin — it will connect to the MCP server via WebSocket on `localhost:3055`
+Run the plugin — it will connect to the MCP server via WebSocket on `localhost:3055`.
 
 ### 3. Start designing with AI
 
