@@ -1,6 +1,6 @@
 {
   "name": "figma-mcp-poor",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Figma MCP bridge — lets AI assistants read design context from Figma via Plugin API instead of REST API",
   "type": "module",
   "bin": {

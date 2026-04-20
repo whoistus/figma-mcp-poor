@@ -45,6 +45,8 @@ export interface GetNodeByIdParams {
   nodeId: string;
   depth?: number;
   properties?: PropertyCategory[];
+  childrenOffset?: number;
+  childrenLimit?: number;
 }
 
 export interface GetStylesParams {
@@ -193,6 +195,7 @@ export interface SerializedNode {
   children?: SerializedNode[];
   childCount?: number;
   truncated?: boolean;
+  pagination?: { offset: number; limit: number; total: number; hasMore: boolean };
 }
 
 export interface SerializedPaint {

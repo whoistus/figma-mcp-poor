@@ -125,7 +125,7 @@ Set the `FIGMA_MCP_PORT` environment variable to change the WebSocket port (defa
 | `get_dev_summary`    | **Start here.** Complete summary: structure, texts, colors, components, screenshot | Medium     |
 | `get_document_info`  | File name, pages, current page                                                     | Low        |
 | `get_selection`      | Selected nodes with CSS properties, optional text flattening and screenshot        | Low–Medium |
-| `get_node_by_id`     | Inspect a specific node by ID with CSS properties                                  | Low–Medium |
+| `get_node_by_id`     | Inspect a specific node by ID with CSS properties. Paginates large children lists   | Low–Medium |
 | `get_styles`         | Local paint/text/effect/grid styles as CSS values                                  | Low        |
 | `get_variables`      | Design tokens/variables (colors, numbers, strings, booleans)                       | Low        |
 | `get_components`     | Local components with property definitions                                         | Low–Medium |
@@ -189,7 +189,7 @@ npm run watch -w figma-plugin
 
 ## Changelog
 
-### 0.1.0 (2025-04-15)
+### 0.1.0 (2026-04-15)
 
 - Initial public release
 - 9 MCP tools: `get_dev_summary`, `get_document_info`, `get_selection`, `get_node_by_id`, `get_styles`, `get_variables`, `get_components`, `get_design_context`, `get_screenshot`
@@ -199,7 +199,7 @@ npm run watch -w figma-plugin
 - Screenshot export with configurable max width
 - Text flattening and color collection utilities
 
-### 0.2.0 (2025-04-15)
+### 0.2.0 (2026-04-15)
 
 - **New tool: `get_flows`** — prototype flow support
   - Returns flow starting points (`page.flowStartingPoints`)
@@ -209,6 +209,19 @@ npm run watch -w figma-plugin
   - Includes transition animations (dissolve, smart animate, slide, push, etc.) with duration and easing
 - **Node-level reactions** — every serialized node now includes `reactions[]` when it has prototype interactions, visible in `get_node_by_id`, `get_selection`, and other node tools
 - Compact arrow format for interactions: `Button --click--> Login Screen (smart-animate 300ms)`
+
+### 0.3.0 (2026-04-15)
+
+Fixes for fetching large design areas with minimal data loss.
+
+- **Pagination on `get_node_by_id`** — new `childrenOffset` and `childrenLimit` params let AI fetch children in chunks for large frames. Response includes `pagination: { offset, limit, total, hasMore }`.
+- **Raised children cap** — `MAX_CHILDREN` bumped from **100 → 200** per node. Fewer silent truncations on real-world designs.
+- **Fixed `componentName` bug** — `get_dev_summary` previously reported the instance's node name as the component name. Now correctly resolves the master component name via `getMainComponentAsync()`. Renamed instances now group properly: `PrimaryButton x5: "Save", "Cancel", ...`.
+- **Colors inside instances** — `get_dev_summary.colors` now walks into instances for fill colors (previously missed custom fill overrides).
+- **Configurable `depth` on `get_dev_summary`** — was hardcoded to 2, now accepts `depth` param (default 2, max 5) for deeply nested screens.
+- **Cap on `flatten_text`** — 500-entry default cap prevents token budget blow-ups on text-heavy pages.
+- **Cap on `get_flows`** — new `limit` param (default 200, max 1000) with clear truncation hint in output.
+- **`get_design_context` brief truncation signal** — 16000-char cap now includes an explicit hint instead of silently cutting mid-content.
 
 ## License
 

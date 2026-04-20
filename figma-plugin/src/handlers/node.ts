@@ -10,6 +10,8 @@ export async function handleGetNodeById(params: {
   flatten_text?: boolean;
   include_screenshot?: boolean;
   max_width?: number;
+  childrenOffset?: number;
+  childrenLimit?: number;
 }) {
   const node = await figma.getNodeByIdAsync(params.nodeId);
   if (!node) {
@@ -23,7 +25,11 @@ export async function handleGetNodeById(params: {
   const depth = params.depth || 1;
   const properties = params.properties || ["all"];
 
-  const serialized = await serializeNode(sceneNode, depth, properties);
+  const hasPagination = params.childrenOffset !== undefined || params.childrenLimit !== undefined;
+  const options = hasPagination
+    ? { childrenOffset: params.childrenOffset, childrenLimit: params.childrenLimit }
+    : undefined;
+  const serialized = await serializeNode(sceneNode, depth, properties, new Set(), options);
 
   // Flatten all text nodes regardless of depth
   let flatTexts = undefined;

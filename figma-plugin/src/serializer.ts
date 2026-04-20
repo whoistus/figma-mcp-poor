@@ -69,6 +69,12 @@ interface SerializedNode {
   children?: SerializedNode[];
   childCount?: number;
   truncated?: boolean;
+  pagination?: { offset: number; limit: number; total: number; hasMore: boolean };
+}
+
+interface SerializerOptions {
+  childrenOffset?: number;
+  childrenLimit?: number;
 }
 
 interface FlattenedText {
@@ -83,7 +89,8 @@ interface FlattenedText {
 
 type PropertyCategory = "layout" | "colors" | "typography" | "spacing" | "size" | "children" | "all";
 
-const MAX_CHILDREN = 100;
+const MAX_CHILDREN = 200;
+const MAX_FLATTENED_TEXTS = 500;
 
 function shouldInclude(categories: PropertyCategory[], category: PropertyCategory): boolean {
   return categories.includes("all") || categories.includes(category);
@@ -103,7 +110,8 @@ export async function serializeNode(
   node: SceneNode,
   depth: number = 1,
   properties: PropertyCategory[] = ["all"],
-  visited = new Set<string>()
+  visited = new Set<string>(),
+  options?: SerializerOptions
 ): Promise<SerializedNode> {
   // Prevent circular references
   if (visited.has(node.id)) {
@@ -272,21 +280,30 @@ export async function serializeNode(
     const total = parent.children.length;
     const effectiveDepth = depth + getDepthBonus(node);
 
+    // Pagination: options only applied at root call; recursive calls use defaults
+    const offset = options?.childrenOffset ?? 0;
+    const limit = options?.childrenLimit ?? MAX_CHILDREN;
+    const end = Math.min(offset + limit, total);
+    const wasPaginated = options?.childrenOffset !== undefined || options?.childrenLimit !== undefined;
+
     if (effectiveDepth > 1) {
-      const childrenToSerialize = parent.children.slice(0, MAX_CHILDREN);
+      const childrenToSerialize = parent.children.slice(offset, end);
       result.children = await Promise.all(
         childrenToSerialize.map((child) =>
           serializeNode(child, effectiveDepth - 1, properties, new Set(visited))
         )
       );
-      if (total > MAX_CHILDREN) {
+      if (end < total || offset > 0) {
         result.truncated = true;
         result.childCount = total;
+        if (wasPaginated || end < total) {
+          result.pagination = { offset, limit, total, hasMore: end < total };
+        }
       }
     } else {
       // At depth boundary: stubs, but TEXT nodes always get content
       const stubs: SerializedNode[] = [];
-      for (const child of parent.children.slice(0, MAX_CHILDREN)) {
+      for (const child of parent.children.slice(offset, end)) {
         const stub: SerializedNode = { id: child.id, name: child.name, type: child.type };
         if (child.type === "TEXT") {
           serializeTextProps(child as TextNode, stub);
@@ -311,8 +328,11 @@ export async function serializeNode(
         stubs.push(stub);
       }
       result.children = stubs;
-      if (total > MAX_CHILDREN) {
+      if (end < total || offset > 0) {
         result.truncated = true;
+        if (wasPaginated || end < total) {
+          result.pagination = { offset, limit, total, hasMore: end < total };
+        }
       }
       result.childCount = total;
     }
@@ -372,32 +392,40 @@ function collectTexts(node: SceneNode): Array<{ id: string; name: string; charac
 
 // ---- Flatten all TEXT nodes in a subtree (for flatten_text mode) ----
 
-export function flattenTexts(node: SceneNode, parentPath: string = ""): FlattenedText[] {
-  const path = parentPath ? parentPath + " > " + node.name : node.name;
+export function flattenTexts(node: SceneNode, parentPath: string = "", limit: number = MAX_FLATTENED_TEXTS): FlattenedText[] {
   const results: FlattenedText[] = [];
+  const state = { count: 0, truncated: false };
 
-  if (node.type === "TEXT") {
-    const text = node as TextNode;
-    const entry: FlattenedText = {
-      id: node.id,
-      name: node.name,
-      characters: text.characters,
-      parentPath: path,
-    };
-    entry.fontSize = text.fontSize === figma.mixed ? "mixed" : text.fontSize;
-    entry.fontName = text.fontName === figma.mixed ? "mixed" : { family: text.fontName.family, style: text.fontName.style };
-    if (text.fills !== figma.mixed) {
-      entry.fills = serializePaints(text.fills as readonly Paint[]);
+  function walk(n: SceneNode, path: string): void {
+    if (state.count >= limit) { state.truncated = true; return; }
+    const currentPath = path ? path + " > " + n.name : n.name;
+
+    if (n.type === "TEXT") {
+      const text = n as TextNode;
+      const entry: FlattenedText = {
+        id: n.id,
+        name: n.name,
+        characters: text.characters,
+        parentPath: currentPath,
+      };
+      entry.fontSize = text.fontSize === figma.mixed ? "mixed" : text.fontSize;
+      entry.fontName = text.fontName === figma.mixed ? "mixed" : { family: text.fontName.family, style: text.fontName.style };
+      if (text.fills !== figma.mixed) {
+        entry.fills = serializePaints(text.fills as readonly Paint[]);
+      }
+      results.push(entry);
+      state.count++;
     }
-    results.push(entry);
+
+    if ("children" in n) {
+      for (const child of (n as FrameNode).children) {
+        if (state.count >= limit) { state.truncated = true; break; }
+        walk(child, currentPath);
+      }
+    }
   }
 
-  if ("children" in node) {
-    for (const child of (node as FrameNode).children) {
-      results.push(...flattenTexts(child, path));
-    }
-  }
-
+  walk(node, parentPath);
   return results;
 }
 
@@ -435,41 +463,39 @@ export function collectColors(node: SceneNode): SerializedPaint[] {
 }
 
 // ---- Collect all component instances in a subtree ----
+// Async because getMainComponentAsync resolves the master component name,
+// so renamed instances still group by their original component.
 
-export function collectComponents(node: SceneNode): Array<{
+export async function collectComponents(node: SceneNode): Promise<Array<{
   id: string;
   name: string;
   componentName: string;
   overriddenTexts: Array<{ id: string; name: string; characters: string }>;
-}> {
-  const results: Array<{
-    id: string;
-    name: string;
-    componentName: string;
-    overriddenTexts: Array<{ id: string; name: string; characters: string }>;
-  }> = [];
+}>> {
+  const instances: InstanceNode[] = [];
 
   function walk(n: SceneNode): void {
-    if (n.type === "INSTANCE") {
-      const instance = n as InstanceNode;
-      // mainComponent is sync-accessible during walk since it was already loaded
-      // but to be safe, we use the name from componentProperties
-      results.push({
-        id: n.id,
-        name: n.name,
-        componentName: n.name,
-        overriddenTexts: collectTexts(n),
-      });
-    }
+    if (n.type === "INSTANCE") instances.push(n as InstanceNode);
     if ("children" in n) {
-      for (const child of (n as FrameNode).children) {
-        walk(child);
-      }
+      for (const child of (n as FrameNode).children) walk(child);
     }
   }
 
   walk(node);
-  return results;
+
+  return Promise.all(instances.map(async (instance) => {
+    let componentName = instance.name;
+    try {
+      const mainComponent = await instance.getMainComponentAsync();
+      if (mainComponent) componentName = mainComponent.name;
+    } catch { /* ignore; fall back to instance name */ }
+    return {
+      id: instance.id,
+      name: instance.name,
+      componentName,
+      overriddenTexts: collectTexts(instance),
+    };
+  }));
 }
 
 // ---- Reaction serializer ----

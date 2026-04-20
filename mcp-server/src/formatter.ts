@@ -179,6 +179,7 @@ export interface FormattedNode {
   children?: FormattedNode[];
   childCount?: number;
   truncated?: boolean;
+  pagination?: { offset: number; limit: number; total: number; hasMore: boolean };
 }
 
 export function formatNode(node: SerializedNode): FormattedNode {
@@ -252,6 +253,7 @@ export function formatNode(node: SerializedNode): FormattedNode {
   }
   if (node.childCount !== undefined) f.childCount = node.childCount;
   if (node.truncated) f.truncated = true;
+  if (node.pagination) f.pagination = node.pagination;
 
   return f;
 }

@@ -17,6 +17,7 @@ interface ColorEntry {
 
 interface ComponentEntry {
   name: string;
+  componentName: string;
   texts: string[];
 }
 
@@ -24,6 +25,7 @@ export async function handleGetDevSummary(params: {
   nodeId?: string;
   include_screenshot?: boolean;
   max_width?: number;
+  depth?: number;
 }) {
   let targetNode: SceneNode;
 
@@ -41,23 +43,12 @@ export async function handleGetDevSummary(params: {
     targetNode = selection[0];
   }
 
-  // Single tree walk: collect texts, colors, components all at once
   const texts: TextEntry[] = [];
   const colorSet = new Set<string>();
   const colors: ColorEntry[] = [];
-  const components: ComponentEntry[] = [];
+  const instanceNodes: InstanceNode[] = [];
 
-  function walk(n: SceneNode): void {
-    // Collect text
-    if (n.type === "TEXT") {
-      const t = n as TextNode;
-      const entry: TextEntry = { name: n.name, characters: t.characters };
-      if (t.fontSize !== figma.mixed) entry.fontSize = t.fontSize;
-      if (t.fontName !== figma.mixed) entry.fontName = { family: t.fontName.family, style: t.fontName.style };
-      texts.push(entry);
-    }
-
-    // Collect colors from fills
+  function collectColorsFromFills(n: SceneNode): void {
     if ("fills" in n && n.fills !== figma.mixed) {
       for (const paint of n.fills as readonly Paint[]) {
         if (paint.type === "SOLID" && paint.visible !== false) {
@@ -74,26 +65,62 @@ export async function handleGetDevSummary(params: {
         }
       }
     }
+  }
 
-    // Collect component instances
-    if (n.type === "INSTANCE") {
-      const compTexts: string[] = [];
-      collectInstanceTexts(n, compTexts);
-      components.push({ name: n.name, texts: compTexts });
+  function collectColorsDeep(n: SceneNode): void {
+    collectColorsFromFills(n);
+    if ("children" in n) {
+      for (const child of (n as FrameNode).children) collectColorsDeep(child);
+    }
+  }
+
+  function walk(n: SceneNode): void {
+    // Text content
+    if (n.type === "TEXT") {
+      const t = n as TextNode;
+      const entry: TextEntry = { name: n.name, characters: t.characters };
+      if (t.fontSize !== figma.mixed) entry.fontSize = t.fontSize;
+      if (t.fontName !== figma.mixed) entry.fontName = { family: t.fontName.family, style: t.fontName.style };
+      texts.push(entry);
     }
 
-    // Recurse (but don't recurse into instances — already collected their texts)
-    if ("children" in n && n.type !== "INSTANCE") {
-      for (const child of (n as FrameNode).children) {
-        walk(child);
+    // Global color palette
+    collectColorsFromFills(n);
+
+    // Component instances (recorded once, main component resolved later)
+    if (n.type === "INSTANCE") {
+      instanceNodes.push(n as InstanceNode);
+      // Still collect colors INSIDE the instance (fills/overrides contribute to palette)
+      if ("children" in n) {
+        for (const child of (n as FrameNode).children) collectColorsDeep(child);
       }
+      return; // Don't walk into instance for text/components (treated as atomic)
+    }
+
+    if ("children" in n) {
+      for (const child of (n as FrameNode).children) walk(child);
     }
   }
 
   walk(targetNode);
 
-  // Structure (depth 2, text always included via serializer)
-  const structure = await serializeNode(targetNode, 2, ["all"]);
+  // Resolve instance master components asynchronously
+  const components = await Promise.all(
+    instanceNodes.map(async (instance): Promise<ComponentEntry> => {
+      let componentName = instance.name;
+      try {
+        const mainComponent = await instance.getMainComponentAsync();
+        if (mainComponent) componentName = mainComponent.name;
+      } catch { /* ignore; fall back to instance name */ }
+      const instanceTexts: string[] = [];
+      collectInstanceTexts(instance, instanceTexts);
+      return { name: instance.name, componentName, texts: instanceTexts };
+    })
+  );
+
+  // Structure tree (depth configurable; default 2)
+  const depth = params.depth ?? 2;
+  const structure = await serializeNode(targetNode, depth, ["all"]);
 
   // Optional screenshot
   let screenshot: { base64: string; format: string; mimeType: string } | null = null;

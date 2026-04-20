@@ -81,6 +81,7 @@ export interface SerializedNode {
   children?: SerializedNode[];
   childCount?: number;
   truncated?: boolean;
+  pagination?: { offset: number; limit: number; total: number; hasMore: boolean };
 }
 
 export interface SerializedPaint {
