@@ -1,7 +1,7 @@
 {
   "name": "figma-mcp-plugin",
-  "version": "1.0.0",
-  "private": true,
+  "version": "0.4.0",
+  "private": false,
   "scripts": {
     "build": "node build.mjs",
     "watch": "node build.mjs --watch"

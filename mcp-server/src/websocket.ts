@@ -1,6 +1,7 @@
 import { WebSocketServer, WebSocket } from "ws";
 import { randomUUID } from "crypto";
 import type { PluginRequest, PluginResponse } from "./types.js";
+import type { BridgeLike } from "./bridge.js";
 
 interface PendingRequest {
   resolve: (data: unknown) => void;
@@ -8,13 +9,40 @@ interface PendingRequest {
   timer: ReturnType<typeof setTimeout>;
 }
 
-export class WebSocketBridge {
+export class WebSocketBridge implements BridgeLike {
   private wss: WebSocketServer;
+  private proxyWss: WebSocketServer;
   private socket: WebSocket | null = null;
   private pending = new Map<string, PendingRequest>();
 
   constructor(port: number) {
     this.wss = new WebSocketServer({ port });
+
+    // Proxy server: secondary MCP instances connect here (port + 1) to forward requests
+    this.proxyWss = new WebSocketServer({ port: port + 1 });
+    this.proxyWss.on("connection", (ws) => {
+      console.error("[MCP] Secondary instance connected to proxy");
+      ws.on("message", async (raw) => {
+        let req: PluginRequest;
+        try {
+          req = JSON.parse(raw.toString()) as PluginRequest;
+        } catch {
+          return;
+        }
+        try {
+          const data = await this.request(req.type, req.params, 60_000);
+          const resp: PluginResponse = { id: req.id, success: true, data };
+          if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(resp));
+        } catch (err) {
+          const resp: PluginResponse = { id: req.id, success: false, error: (err as Error).message };
+          if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(resp));
+        }
+      });
+      ws.on("close", () => {
+        console.error("[MCP] Secondary instance disconnected from proxy");
+      });
+    });
+    console.error(`[MCP] Secondary proxy listening on port ${port + 1}`);
 
     this.wss.on("connection", (ws) => {
       // Only allow one plugin connection at a time

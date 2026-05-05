@@ -24,7 +24,8 @@ export type ToolType =
   | "get_components"
   | "get_design_context"
   | "get_screenshot"
-  | "get_flows";
+  | "get_flows"
+  | "get_user_flow_context";
 
 // ---- Property Filter Categories ----
 
@@ -144,4 +145,40 @@ export interface SerializedFlowData {
   startingPoints: SerializedFlowStartingPoint[];
   connections: SerializedFlowConnection[];
   totalConnections: number;
+}
+
+// ---- FlowGraph Types (get_user_flow_context) ----
+
+export interface FlowGraphNode {
+  id: string;
+  name: string;
+  type: string;
+}
+
+export interface FlowGraphEdge {
+  from: string;
+  to: string;
+  trigger: string; // TriggerType values (string in mirror for simplicity)
+  action: string;  // ActionType values
+  element?: string;
+}
+
+export interface FlowGraphInferredEdge {
+  from: string;
+  to: string;
+  confidence: number;
+  reason: string;
+}
+
+export interface FlowGraph {
+  nodes: FlowGraphNode[];
+  edges: FlowGraphEdge[];
+  startingPoints: string[];
+  paths: string[][];
+  metadata: {
+    hasFlow: boolean;
+    totalNodes: number;
+    totalEdges: number;
+  };
+  inferredEdges?: FlowGraphInferredEdge[];
 }

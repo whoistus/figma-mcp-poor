@@ -125,18 +125,19 @@ Set the `FIGMA_MCP_PORT` environment variable to change the WebSocket port (defa
 
 ## Available Tools
 
-| Tool                 | Description                                                                        | Token Cost |
-| -------------------- | ---------------------------------------------------------------------------------- | ---------- |
-| `get_dev_summary`    | **Start here.** Complete summary: structure, texts, colors, components, screenshot | Medium     |
-| `get_document_info`  | File name, pages, current page                                                     | Low        |
-| `get_selection`      | Selected nodes with CSS properties, optional text flattening and screenshot        | Low–Medium |
-| `get_node_by_id`     | Inspect a specific node by ID with CSS properties. Paginates large children lists   | Low–Medium |
-| `get_styles`         | Local paint/text/effect/grid styles as CSS values                                  | Low        |
-| `get_variables`      | Design tokens/variables (colors, numbers, strings, booleans)                       | Low        |
-| `get_components`     | Local components with property definitions                                         | Low–Medium |
-| `get_design_context` | Design brief (markdown) or detailed context (JSON) for a node                      | Medium     |
-| `get_flows`          | Prototype flows: starting points, interactions, navigation connections              | Low–Medium |
-| `get_screenshot`     | Export a node as PNG, JPG, or SVG                                                  | Medium     |
+| Tool                      | Description                                                                        | Token Cost |
+| ------------------------- | ---------------------------------------------------------------------------------- | ---------- |
+| `get_dev_summary`         | **Start here.** Complete summary: structure, texts, colors, components, screenshot | Medium     |
+| `get_document_info`       | File name, pages, current page                                                     | Low        |
+| `get_selection`           | Selected nodes with CSS properties, optional text flattening and screenshot        | Low–Medium |
+| `get_node_by_id`          | Inspect a specific node by ID with CSS properties. Paginates large children lists  | Low–Medium |
+| `get_styles`              | Local paint/text/effect/grid styles as CSS values                                  | Low        |
+| `get_variables`           | Design tokens/variables (colors, numbers, strings, booleans)                       | Low        |
+| `get_components`          | Local components with property definitions                                         | Low–Medium |
+| `get_design_context`      | Design brief (markdown) or detailed context (JSON) for a node                      | Medium     |
+| `get_flows`               | Prototype flows: starting points, interactions, navigation connections              | Low–Medium |
+| `get_screenshot`          | Export a node as PNG, JPG, or SVG                                                  | Medium     |
+| `get_user_flow_context`   | Structured FlowGraph JSON: nodes, edges, BFS paths, explicit no-flow signal        | Low–Medium |
 
 ## How It Works
 
@@ -151,6 +152,7 @@ Key design decisions:
 - **Default depth=1** for node traversal prevents context explosion. Use `get_node_by_id` to drill deeper.
 - **Formatting is server-side** — the plugin sends raw data, the server transforms it. Formatting changes don't require reloading the plugin.
 - **Smart truncation** — responses exceeding the token budget are truncated with hints guiding the AI to drill deeper.
+- **Multi-instance safe** — the first MCP process to start becomes the primary (owns port 3055 + proxy port 3056). Subsequent processes (e.g. Codex starting alongside Claude Code) automatically become secondaries and forward requests through the primary. Only one Figma plugin connection is ever active.
 
 ## Development
 
@@ -186,6 +188,11 @@ npm run watch -w figma-plugin
 - Only one Figma file can connect at a time (single-connection design)
 - If you switch files, restart the plugin in the new file
 
+**Multiple AI tools conflict / port already in use**
+
+- Starting in v0.4.0, multiple MCP instances co-exist automatically. The first instance owns port 3055; subsequent ones proxy through it on port 3056.
+- If you see `EADDRINUSE` errors, an old server process may still be running: `lsof -i :3055 -i :3056` to find and kill it.
+
 **Large designs timing out**
 
 - Use `get_node_by_id` with specific node IDs instead of scanning entire pages
@@ -194,26 +201,17 @@ npm run watch -w figma-plugin
 
 ## Changelog
 
-### 0.1.0 (2026-04-15)
+### 0.4.0 (2026-05-05)
 
-- Initial public release
-- 9 MCP tools: `get_dev_summary`, `get_document_info`, `get_selection`, `get_node_by_id`, `get_styles`, `get_variables`, `get_components`, `get_design_context`, `get_screenshot`
-- CSS-like formatting for colors, typography, layout (flexbox), spacing
-- Smart truncation with drill-deeper hints
-- Depth-controlled serialization with auto depth bonus for COMPONENT_SET (+2) and INSTANCE (+1)
-- Screenshot export with configurable max width
-- Text flattening and color collection utilities
-
-### 0.2.0 (2026-04-15)
-
-- **New tool: `get_flows`** — prototype flow support
-  - Returns flow starting points (`page.flowStartingPoints`)
-  - Collects all prototype connections from node trees
-  - Supports all trigger types (click, hover, press, drag, mouse enter/leave, timeout)
-  - Supports all action types (navigate, swap overlay, open URL, back, close, set variable)
-  - Includes transition animations (dissolve, smart animate, slide, push, etc.) with duration and easing
-- **Node-level reactions** — every serialized node now includes `reactions[]` when it has prototype interactions, visible in `get_node_by_id`, `get_selection`, and other node tools
-- Compact arrow format for interactions: `Button --click--> Login Screen (smart-animate 300ms)`
+- **New tool: `get_user_flow_context`** — structured FlowGraph JSON for deterministic AI navigation analysis
+  - Returns `nodes`, `edges`, `paths` (BFS from prototype starting points), and `metadata.hasFlow`
+  - Explicit no-flow signal (`hasFlow: false`, empty edges/paths) when no prototype connections exist — no hallucination
+  - Optional `includeInference: true` adds heuristic-inferred edges (action-keyword buttons, list→detail patterns) when no real flow exists, clearly separated from real edges
+  - `maxDepth` param (default 10, max 20) controls BFS traversal depth; paths capped at 200 to protect token budget
+- **Multi-instance support** — run Claude Code + Codex (or any two MCP clients) simultaneously without port conflicts
+  - First process becomes primary: owns Figma plugin WS on port 3055 + proxy listener on port 3056
+  - Subsequent processes become secondaries: connect to proxy port, forward all tool calls through the primary
+  - No changes to existing tool behaviour; no manual configuration required
 
 ### 0.3.0 (2026-04-15)
 
@@ -227,6 +225,27 @@ Fixes for fetching large design areas with minimal data loss.
 - **Cap on `flatten_text`** — 500-entry default cap with truncation tracking prevents token budget blow-ups on text-heavy pages.
 - **Cap on `get_flows`** — new `limit` param (default 200, max 1000) with clear truncation hint in output.
 - **`get_design_context` brief truncation signal** — 16000-char cap now includes an explicit hint instead of silently cutting mid-content.
+
+### 0.2.0 (2026-04-15)
+
+- **New tool: `get_flows`** — prototype flow support
+  - Returns flow starting points (`page.flowStartingPoints`)
+  - Collects all prototype connections from node trees
+  - Supports all trigger types (click, hover, press, drag, mouse enter/leave, timeout)
+  - Supports all action types (navigate, swap overlay, open URL, back, close, set variable)
+  - Includes transition animations (dissolve, smart animate, slide, push, etc.) with duration and easing
+- **Node-level reactions** — every serialized node now includes `reactions[]` when it has prototype interactions, visible in `get_node_by_id`, `get_selection`, and other node tools
+- Compact arrow format for interactions: `Button --click--> Login Screen (smart-animate 300ms)`
+
+### 0.1.0 (2026-04-15)
+
+- Initial public release
+- 9 MCP tools: `get_dev_summary`, `get_document_info`, `get_selection`, `get_node_by_id`, `get_styles`, `get_variables`, `get_components`, `get_design_context`, `get_screenshot`
+- CSS-like formatting for colors, typography, layout (flexbox), spacing
+- Smart truncation with drill-deeper hints
+- Depth-controlled serialization with auto depth bonus for COMPONENT_SET (+2) and INSTANCE (+1)
+- Screenshot export with configurable max width
+- Text flattening and color collection utilities
 
 ## License
 

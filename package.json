@@ -1,7 +1,7 @@
 {
   "name": "figma-mcp-poor",
-  "version": "1.0.0",
-  "private": true,
+  "version": "0.4.0",
+  "private": false,
   "workspaces": [
     "mcp-server",
     "figma-plugin"
